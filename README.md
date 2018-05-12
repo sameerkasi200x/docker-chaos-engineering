@@ -349,3 +349,68 @@ To be Added
 
 #### Simulate Packet loss
 To be added
+
+
+#### The bold test - Node failure
+One of the reasont to run your containers in a Swarm cluster is to ensure fault tolderance to node failrues. Let's try to simulate node failure and see how docker UCP manager handles it.
+
+Let's first list various tasks of our application:
+
+	docker service ps twet-app
+
+Output would something like below, giving you details of the number of tasks, their id and node on which they are running:
+
+	ID                  NAME                IMAGE                                                                  NODE                DESIRED STATE       CURRENT STATE            ERROR               PORTS
+	s8iib1ue7nrd        twet-app.1          dtr.ashnikdemo.com:12443/development/tweet_to_us:demoMay_Healthcheck   ip-10-100-2-67      Running             Running 42 minutes ago
+	oiafp1o6klxx        twet-app.2          dtr.ashnikdemo.com:12443/development/tweet_to_us:demoMay_Healthcheck   ip-10-100-2-93      Running             Running 42 minutes ago
+
+
+For the purpose of our testing let's try to fail one of the nodes, let's say ```ip-10-100-2-67```.
+
+
+
+Since I am running in AWS, I will find out the instance id of the server and restart. We can use ```docker node ls``` before and after restart, to note the node status
+
+
+	sh-4.2$ docker node ls
+	ID                            HOSTNAME                                         STATUS              AVAILABILITY        MANAGER STATUS
+	3du1xn000h3jz3t2fcx9lcvdl     ip-10-100-2-38                                   Ready               Active
+	ag12n6ejw7ztf0yqpsao4208u     ip-10-100-2-115                                  Ready               Active
+	awql5xr67h0jmxjllzfohqqy2 *   ip-10-100-2-15                                   Ready               Active              Reachable
+	e2soqi2u67nfnoxop8mgfvm7a     ip-10-100-2-169                                  Ready               Active              Reachable
+	i2fjh10bx31ij6i3q2jvzwjco     ip-10-100-2-40                                   Ready               Active              Leader
+	lpi6z3np5vp83vatmh51d3i59     ip-10-100-2-106                                  Ready               Active
+	m4j4g27conj199uciw98k5h1b     ip-10-100-2-67                                   Ready               Active
+	mzwnamamkze7yagqa602tmd71     ip-10-100-2-93                                   Ready               Active
+	o3z2xxqo90mm4dlnpq632zorj     ip-10-100-2-66                                   Ready               Active
+	yczj5bg55l37xfkugkwwyc5ji     ip-10-100-2-70.ap-southeast-1.compute.internal   Ready               Active
+
+	sh-4.2$ aws ec2 describe-instances --filters "Name=network-interface.private-dns-name,Values=ip-10-100-2-67.ap-southeast-1.compute.internal" | grep -i InstanceId
+	                    "InstanceId": "i-0db2edf9253157f97",
+
+	sh-4.2$ aws ec2 reboot-instances --instance-ids  i-0db2edf9253157f97
+
+	sh-4.2$ docker node ls
+	ID                            HOSTNAME                                         STATUS              AVAILABILITY        MANAGER STATUS
+	3du1xn000h3jz3t2fcx9lcvdl     ip-10-100-2-38                                   Ready               Active
+	ag12n6ejw7ztf0yqpsao4208u     ip-10-100-2-115                                  Ready               Active
+	awql5xr67h0jmxjllzfohqqy2     ip-10-100-2-15                                   Ready               Active              Reachable
+	e2soqi2u67nfnoxop8mgfvm7a *   ip-10-100-2-169                                  Ready               Active              Reachable
+	i2fjh10bx31ij6i3q2jvzwjco     ip-10-100-2-40                                   Ready               Active              Leader
+	lpi6z3np5vp83vatmh51d3i59     ip-10-100-2-106                                  Ready               Active
+	m4j4g27conj199uciw98k5h1b     ip-10-100-2-67                                   Down                Active
+	mzwnamamkze7yagqa602tmd71     ip-10-100-2-93                                   Ready               Active
+	o3z2xxqo90mm4dlnpq632zorj     ip-10-100-2-66                                   Ready               Active
+	yczj5bg55l37xfkugkwwyc5ji     ip-10-100-2-70.ap-southeast-1.compute.internal   Ready               Active
+	sh-4.2$
+
+
+As you can see the node became unavailable once the reboot was executed
+
+In order to maintain the desired state of service with 2 replica, Swarm manager would start a new container on one of the surviving nodes
+
+	sh-4.2$ docker service ps twet-app
+	ID                  NAME                IMAGE                                                                  NODE                        DESIRED STATE       CURRENT STATE               ERROR               PORTS
+	7e2icqhk0n54        twet-app.1          dtr.ashnikdemo.com:12443/development/tweet_to_us:demoMay_Healthcheck   ip-10-100-2-93              Running             Running 12 seconds ago
+	s8iib1ue7nrd         \_ twet-app.1      dtr.ashnikdemo.com:12443/development/tweet_to_us:demoMay_Healthcheck   m4j4g27conj199uciw98k5h1b   Shutdown            Running 50 seconds ago
+	oiafp1o6klxx        twet-app.2          dtr.ashnikdemo.com:12443/development/tweet_to_us:demoMay_Healthcheck   ip-10-100-2-93              Running
