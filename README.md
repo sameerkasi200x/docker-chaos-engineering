@@ -20,7 +20,7 @@ Also, there is a philosophical shift happenning the way IT operations used to th
 This all lead the IT Operation leads to be convinced that the best way to be prepared for an outage is to simulate one. If you are not convinced yet, perhaps you want to read a bit about the study of [how much loss the business can suffer because of infrastructure outage](https://www.zdnet.com/article/cloud-computing-heres-how-much-a-huge-outage-could-cost-you/).
 
 
-##How do you go about it?
+## How do you go about it?
 So what should be your strategy? I believe the easiest way is to introduce unit testing and integration testing for infrastructure and architecture components too, just like application code. so for any kind of High Availability or Disaster Recovery approach you have implemented, you should have a test case. e.g. if you are having a cluster with 2 nodes, your test case could be be shoot down one of the node. Yes, you read it right. I am suggesting that you should take down a node. There is no other way for you to test high availability but to simulate failure. Similarly you can test scalability but injecting slowness and network congetion. 
 
 There are many popular examples and inspirations for Chaos Injection. Most popular one are:
@@ -31,7 +31,7 @@ There are many popular examples and inspirations for Chaos Injection. Most popul
 
 Those who practice chaos engineering by trying to break themselves, have been rewarded well in times of outages. Best example is how [Netflix weathered the storm by preparing for the worst](https://www.techrepublic.com/article/aws-outage-how-netflix-weathered-the-storm-by-preparing-for-the-worst/).
 
-##How does that translate in the container's world?
+## How does that translate in the container's world?
 
 In today's date a lot of new applications and services are being deployed as containers. If you are starting up with Chaos Engineering in Docker, there are many different mechanisms and tools available at your disposal.
 
@@ -71,7 +71,8 @@ Build your image Image
     ip-10-100-2-106: Successfully tagged dtr.ashnikdemo.com:12443/development/tweet_to_us:demoMay
 
 
-Now we to push you image to a repository (DTR or Dockerhub):
+Now we need to push you image to a repository (DTR or Dockerhub), so that it is available to all nodes:
+
 	sh-4.2$ docker image push $dtr_url/development/tweet_to_us:demoMay
 	The push refers to a repository [dtr.ashnikdemo.com:12443/development/tweet_to_us]
 	c75bed55c5fa: Pushed
@@ -81,6 +82,7 @@ Now we to push you image to a repository (DTR or Dockerhub):
 	demoMay: digest: sha256:08090c853df56ceee495fb95537ac9f2c81cf8718e5fc76c513ba1d8e7d145f0 size: 1155
 
 Now we will start a service using this image:
+
 	sh-4.2$ docker service create -d --name=twet-app --mode=replicated --replicas=2 --publish 8080:80  dtr.ashnikdemo.com:12443/development/tweet_to_us:demoMay
 	pq6eojqprru4ctw0ib0lwfmj6
 
@@ -98,6 +100,7 @@ As you can see there are two tasks running and these tasks would be setup with V
 
 
 Let's try to kill one of the underlying containers and see if Swarm is able to maintain the declarative state we had requested:
+
 	sh-4.2$ docker container ls | grep -i twet-app
 	603c7f8940fe        dtr.ashnikdemo.com:12443/development/tweet_to_us:demoMay   "nginx -g 'daemon ..."   7 minutes ago       Up 7 minutes        80/tcp, 443/tcp                                           ip-10-100-2-67/twet-app.1.zzq1jgolcc2oyucexn4j9u9pq
 	54aa164ea509        dtr.ashnikdemo.com:12443/development/tweet_to_us:demoMay   "nginx -g 'daemon ..."   7 minutes ago       Up 7 minutes        80/tcp, 443/tcp                                           ip-10-100-2-93/twet-app.2.zlkf4ejuxus851onp4i2t143p
@@ -147,7 +150,6 @@ This means that the healthcheck command ```python /usr/share/nginx/html/healthch
 
 We will also have to add [```healthcheck.py```](https://raw.githubusercontent.com/sameerkasi200x/docker-chaos-engineering/master/healthcheck.py) - our own little piece of code to check the health of container.
 
-
 Now we will build and push the image
 
 	sh-4.2$ docker image build --no-cache -t $dtr_url/development/tweet_to_us:demoMay -f Dockerfile-nohc .
@@ -183,7 +185,6 @@ Now we will build and push the image
 	demoMay_Healthcheck: digest: sha256:be080d2bd36c3da98a433a0e01d132337ab896f5dcf82387f69f92c45963b5a1 size: 1579
 
 Now once we deploy the service, initially the health status would be ```starting``` until the first healthcheck is initiated
-
 
 	sh-4.2$ docker service rm twet-app
 	twet-app
