@@ -1,6 +1,6 @@
-#Chaos Engineering with Docker EE
+# Chaos Engineering with Docker EE
  
-##Why Chaos Engineering?
+## Why Chaos Engineering?
 
 Even before we get into the definition of Chaos Engineering or why it has become important, let's take a look at traditional approach. Most of the applications and configuration would be put under stress testing to find out the breakage point. This primarily helped to assure the operations team that the provisioned capacity is enough for the anticipated workload. The tests was relatively (if not fairly) simple to do. But with time there are couple of things that has changed:
  
