@@ -44,7 +44,7 @@ It is often better to deploy your application as a Swarm Service instead of depl
 #### Example: ####
 In this example, I am going to use a Dockerfile to build a new image and then I will be using it to deploy a new service. The example is executed against a Docker UCP cluster from a client node (with docker cli and UCP Client Bundle).
 
-Setup a docker build file [```Dockerfile-nohc```](https://raw.githubusercontent.com/sameerkasi200x/docker-chaos-engineering/master/Dockerfile-nohc):
+Setup a docker build file [```Dockerfile-nohc```](https://raw.githubusercontent.com/sameerkasi200x/docker-chaos-engineering/master/code/Dockerfile-nohc):
 
     FROM nginx:latest
     RUN apt-get -qq update
@@ -93,7 +93,7 @@ This request asks the Swarm cluster to setup the service with ```--mode=replicat
 	zzq1jgolcc2o        twet-app.1          dtr.ashnikdemo.com:12443/development/tweet_to_us:demoMay   ip-10-100-2-67      Running             Running 3 minutes ago
 	zlkf4ejuxus8        twet-app.2          dtr.ashnikdemo.com:12443/development/tweet_to_us:demoMay   ip-10-100-2-93      Running             Running 3 minutes ago
  
-As you can see there are two tasks running and these tasks would be setup with VIP which will do load-balancing among the two containers/tasks in a round robin manner.
+As you can see there are two tasks running and these tasks would be setup with VIP which will do load-balancing among the two containers/tasks.
 
 	sh-4.2$ docker service inspect --format='{{.Endpoint}}'  twet-app
 	{{vip [{ tcp 80 8080 ingress}]} [{ tcp 80 8080 ingress}] [{f80zlxoy56y20ql48o3v9aiwo 10.255.0.225/16}]}
@@ -140,7 +140,7 @@ To quote the [docker documentation](https://docs.docker.com/engine/reference/bui
 **Note:** The ```HEALTHCHECK``` feature was added in Docker 1.12.
 
 #### Build time example of HEALTHCHECK ####
-To make use of this feature we will add a new command to our Dockerfile now
+To make use of this feature we will add a new command to our [```Dockerfile```](https://raw.githubusercontent.com/sameerkasi200x/docker-chaos-engineering/master/code/Dockerfile) now
 
 	HEALTHCHECK --interval=30s --timeout=3s --retries=2 \ 
 	    CMD  python /usr/share/nginx/html/healthcheck.py || exit 1
@@ -148,41 +148,53 @@ To make use of this feature we will add a new command to our Dockerfile now
 This means that the healthcheck command ```python /usr/share/nginx/html/healthcheck.py``` will be run for the first time after ```30s``` i.e. 30 seconds after starting up the tasks. The healthcheck will be run with an ```interval``` of every 30s after that. The healthcheck would ```timeout``` in ```3s``` and upon failure of ```2 retries``` the container will be declared unhealthy.
 
 
-We will also have to add [```healthcheck.py```](https://raw.githubusercontent.com/sameerkasi200x/docker-chaos-engineering/master/healthcheck.py) - our own little piece of code to check the health of container.
+We will have to add a few new files to support HEALTHCHECK 
++ [```healthcheck.py```](https://raw.githubusercontent.com/sameerkasi200x/docker-chaos-engineering/master/code/healthcheck.py) - our own little piece of code to check the health of container.
++ [```healthcheck.html```](https://raw.githubusercontent.com/sameerkasi200x/docker-chaos-engineering/master/code/healthcheck.html)
 
 Now we will build and push the image
 
-	sh-4.2$ docker image build --no-cache -t $dtr_url/development/tweet_to_us:demoMay -f Dockerfile-nohc .
+	sh-4.2# docker image build --no-cache -t $dtr_url/development/tweet_to_us:demoMay_Healthcheck -f Dockerfile .
 	Sending build context to Docker daemon   7.68kB
-	ip-10-100-2-106: Step 1/5 : FROM nginx:latest
-	ip-10-100-2-106:  ---> ae513a47849c
-	ip-10-100-2-106: Step 2/5 : RUN apt-get -qq update
-	ip-10-100-2-106:  ---> Running in c480b07ed7c6
-	ip-10-100-2-106:  ---> 565dbcd9d44d
-	ip-10-100-2-106: Removing intermediate container c480b07ed7c6
-	ip-10-100-2-106: Step 3/5 : COPY index.html /usr/share/nginx/html/
-	ip-10-100-2-106:  ---> 44dd85761940
-	ip-10-100-2-106: Removing intermediate container e727c5b852ca
-	ip-10-100-2-106: Step 4/5 : EXPOSE 80 443
-	ip-10-100-2-106:  ---> Running in 5f4a131cfeb3
-	ip-10-100-2-106:  ---> d3b6364d99d3
-	ip-10-100-2-106: Removing intermediate container 5f4a131cfeb3
-	ip-10-100-2-106: Step 5/5 : CMD nginx -g daemon off;
-	ip-10-100-2-106:  ---> Running in 58d1dcb65a48
-	ip-10-100-2-106:  ---> 79aff35b2ec4
-	ip-10-100-2-106: Removing intermediate container 58d1dcb65a48
-	ip-10-100-2-106: Successfully built 79aff35b2ec4
-	ip-10-100-2-106: Successfully tagged dtr.ashnikdemo.com:12443/development/tweet_to_us:demoMay
-	ip-10-100-2-106:
+	Step 1/7 : FROM nginx:latest
+	 ---> b175e7467d66
+	Step 2/7 : RUN apt-get -qq update
+	 ---> Running in 152a3156632c
+	 ---> 2a6be94d9a04
+	Removing intermediate container 152a3156632c
+	Step 3/7 : RUN apt-get -qq --allow-downgrades --allow-remove-essential --allow-change-held-packages install python > /dev/null
+	 ---> Running in 56a5b9141aaf
+	debconf: delaying package configuration, since apt-utils is not installed
+	 ---> 99605506e79f
+	Removing intermediate container 56a5b9141aaf
+	Step 4/7 : COPY healthcheck.html healthcheck.py index.html /usr/share/nginx/html/
+	 ---> b1b93b73d0fa
+	Removing intermediate container dab1d03a75e4
+	Step 5/7 : EXPOSE 80 443
+	 ---> Running in 50b63022a6c3
+	 ---> 4297f32f769b
+	Removing intermediate container 50b63022a6c3
+	Step 6/7 : HEALTHCHECK --interval=30s --timeout=3s --retries=2 CMD python /usr/share/nginx/html/healthcheck.py || exit 1
+	 ---> Running in 1a1a9cd1f139
+	 ---> 042010177008
+	Removing intermediate container 1a1a9cd1f139
+	Step 7/7 : CMD nginx -g daemon off;
+	 ---> Running in 767a8098f177
+	 ---> 9153fcd78222
+	Removing intermediate container 767a8098f177
+	Successfully built 9153fcd78222
+	Successfully tagged dtr.ashnikdemo.com:12443/development/tweet_to_us:demoMay_Healthcheck
+	
+	sh-4.2# docker image push dtr.ashnikdemo.com:12443/development/tweet_to_us:demoMay_Healthcheck
+	The push refers to a repository [dtr.ashnikdemo.com:12443/development/tweet_to_us]
+	a60e00b623bb: Pushed
+	2e83bcd5bc8d: Pushed
+	5134599f00a1: Pushed
+	77e23640b533: Pushed
+	757d7bb101da: Pushed
+	3358360aedad: Pushed
+	demoMay_Healthcheck: digest: sha256:a4fb4fd2733e37ae7282148ccb497aac4c2fc18a74aa8e950271ffd648b07da8 size: 1579
 
-	sh-4.2$ docker image push $dtr_url/development/tweet_to_us:demoMay_Healthcheck                                                         The push refers to a repository [dtr.ashnikdemo.com:12443/development/tweet_to_us]
-	f5d230253292: Pushed
-	195303f4db04: Layer already exists
-	f27e0fd5250b: Layer already exists
-	7ab428981537: Layer already exists
-	82b81d779f83: Layer already exists
-	d626a8ad97a1: Layer already exists
-	demoMay_Healthcheck: digest: sha256:be080d2bd36c3da98a433a0e01d132337ab896f5dcf82387f69f92c45963b5a1 size: 1579
 
 Now once we deploy the service, initially the health status would be ```starting``` until the first healthcheck is initiated
 
