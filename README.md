@@ -429,18 +429,20 @@ Well you can run pubma in a container as the example says on it's [github page](
 
 
 > ```# once in a 10 seconds, try to kill (with `SIGTERM` signal) all containers named **hp(something)**```
+>
 > ``` # on same Docker host, where Pumba container is running```
+>
 > ```$ docker run -d -v /var/run/docker.sock:/var/run/docker.sock gaiaadm/pumba pumba --interval 10s kill --signal SIGTERM ^hp```
 
 This means that we can create, a service that runs on each node in your Swarm cluster and executes pumba netem command. We need to change the ```entrypoint``` of the service and mount ```/var/run/docker.sock``` of the local node to container so that pumba can have access to docker deamon on each node. 
 
 The pumba command should essentially look for containers that belong to your service only so you need to pass a list of containers to entrypoint pumba command.
+
 	export container_list=$(docker service ps --no-trunc --filter "desired-state=Running" ${SVC_NAME} | awk ' {if (NR!=1) {print $2"."$1} } ')
 
 The command should try to inject delay only in specific interface i.e. the one used by ```HEALTHCHECK```.
 
-export netem_interface=lo
-
+	export netem_interface=lo
 
 Now let's run our pumba netem service
 
