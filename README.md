@@ -357,7 +357,107 @@ You can also use ```--interval``` option to run the command at a regular interva
         ${SVC_NAME} | awk ' {if (NR!=1) {print $2"."$1} } ')
 
 #### Network delay
-To be Added
+Let's first take example of a simple setup with a single node.
+
+	docker swarm init
+
+
+Setup the service by running this command aginst the single manager node of your newly initiated Swarm Cluster
+
+	sh-4.2# docker service create -d --name=twet-app --network tweet-app-net   --mode=replicated --replicas=2 --publish 8080:80   --health-cmd "python /usr/share/nginx/html/healthcheck.py || exit 1"   --health-interval 10s   --health-retries 2   --health-timeout 100ms   dtr.ashnikdemo.com:12443/development/tweet_to_us:demoMay_Healthcheck
+	image dtr.ashnikdemo.com:12443/development/tweet_to_us:demoMay_Healthcheck could not be accessed on a registry to record
+	its digest. Each node will access dtr.ashnikdemo.com:12443/development/tweet_to_us:demoMay_Healthcheck independently,
+	possibly leading to different nodes running different
+	versions of the image.
+	
+	pb7teb13m2oczlp8rub0wjkdo
+
+Fire a pumba command to introduce delays
+
+	sh-4.2# pumba --random netem --interface lo --duration 60s    --tc-image gaiadocker/iproute2 delay    --time 10 jitter 100    --distribution normal $(docker service ps --no-trunc \
+	   --filter "desired-state=Running"  \
+	    ${SVC_NAME} | awk ' {if (NR!=1) {print $2"."$1} } ')
+	INFO[0000] netem: delay for containers
+	INFO[0000] Running netem command '[delay 10ms 10ms 20.00]' on container 2eb65f467edc585e586feee01d3eba36c301bb3830a9e163e81aa4edf8d5f36c for 1m0s
+	INFO[0000] Start netem for container 2eb65f467edc585e586feee01d3eba36c301bb3830a9e163e81aa4edf8d5f36c on 'lo' with command '[delay 10ms 10ms 20.00]'
+
+
+Monitor the status for containers running the of for the service:
+
+	sh-4.2# docker container ls | grep  twet-app
+	2eb65f467edc        dtr.ashnikdemo.com:12443/development/tweet_to_us:demoMay_Healthcheck   "nginx -g 'daemon ..."   About a minute ago   Up About a minute (healthy)   80/tcp, 443/tcp     twet-app.2.eyxe2yo9fs928b6x2oa3q26m0
+	031b9ec08b50        dtr.ashnikdemo.com:12443/development/tweet_to_us:demoMay_Healthcheck   "nginx -g 'daemon ..."   11 minutes ago       Up 11 minutes (healthy)       80/tcp, 443/tcp     twet-app.1.k6wfqvzyn5p7ka60witz92msv
+
+You will notice that becuase of the network delays introduced by pumba, the containers are failing the healthcheck:
+
+	sh-4.2# docker container ls | grep  twet-app
+	2eb65f467edc        dtr.ashnikdemo.com:12443/development/tweet_to_us:demoMay_Healthcheck   "nginx -g 'daemon ..."   About a minute ago   Up About a minute (unhealthy)   80/tcp, 443/tcp     twet-app.2.eyxe2yo9fs928b6x2oa3q26m0
+	031b9ec08b50        dtr.ashnikdemo.com:12443/development/tweet_to_us:demoMay_Healthcheck   "nginx -g 'daemon ..."   11 minutes ago       Up 11 minutes (healthy)         80/tcp, 443/tcp     twet-app.1.k6wfqvzyn5p7ka60witz92msv
+
+Soon the unhealthy container would be removed:
+
+	sh-4.2# docker container ls | grep  twet-app
+	031b9ec08b50        dtr.ashnikdemo.com:12443/development/tweet_to_us:demoMay_Healthcheck   "nginx -g 'daemon ..."   11 minutes ago      Up 11 minutes (healthy)   80/tcp, 443/tcp     twet-app.1.k6wfqvzyn5p7ka60witz92msv
+
+And it will be replaced with a new container:
+
+	sh-4.2# docker container ls | grep  twet-app
+	2c1453b4d680        dtr.ashnikdemo.com:12443/development/tweet_to_us:demoMay_Healthcheck   "nginx -g 'daemon ..."   5 seconds ago       Up Less than a second (health: starting)   80/tcp, 443/tcp     twet-app.2.oc900fzo7a7v1kgz2kt45h1pr
+	031b9ec08b50        dtr.ashnikdemo.com:12443/development/tweet_to_us:demoMay_Healthcheck   "nginx -g 'daemon ..."   11 minutes ago      Up 11 minutes (healthy)                    80/tcp, 443/tcp     twet-app.1.k6wfqvzyn5p7ka60witz92msv
+
+As soon as the healthcheck is executed, it will turn into a healthy one:
+
+	sh-4.2# docker container ls | grep  twet-app
+	2c1453b4d680        dtr.ashnikdemo.com:12443/development/tweet_to_us:demoMay_Healthcheck   "nginx -g 'daemon ..."   20 seconds ago      Up 15 seconds (healthy)   80/tcp, 443/tcp     twet-app.2.oc900fzo7a7v1kgz2kt45h1pr
+	031b9ec08b50        dtr.ashnikdemo.com:12443/development/tweet_to_us:demoMay_Healthcheck   "nginx -g 'daemon ..."   11 minutes ago      Up 11 minutes (healthy)   80/tcp, 443/tcp     twet-app.1.k6wfqvzyn5p7ka60witz92msv
+	sh-4.2#
+
+While the container is being replaced, you will notice that pumba command would fail (as the container it attached to has been lost)  
+
+	INFO[0060] Stopping netem on container 2eb65f467edc585e586feee01d3eba36c301bb3830a9e163e81aa4edf8d5f36c
+	INFO[0060] Stop netem for container 2eb65f467edc585e586feee01d3eba36c301bb3830a9e163e81aa4edf8d5f36c on 'lo'
+	ERRO[0060] Error response from daemon: cannot join network of a non running container: 2eb65f467edc585e586feee01d3eba36c301bb3830a9e163e81aa4edf8d5f36c
+	ERRO[0060] Error response from daemon: cannot join network of a non running container: 2eb65f467edc585e586feee01d3eba36c301bb3830a9e163e81aa4edf8d5f36c
+
+
+As you can see, pumba was able to introduce network delay and ```HEALTHCHECK``` in the image or ```--health-cmd``` at service level helped us to restart the images which were slowing. Well, at this time this is the most that Pumba and Swarm can do. I am hoping in times to come, Swarm service healthcheck would allow us to define auto-scale policies too.
+
+Now, if we are running against a UCP setup or any "true" swarm cluster which has worker and manager nodes, pumba netem command would not work when you fire it from a client. This is unlike the kill command (or most of the other pumba commands), which do work against a Swarm cluster. I came up with a simple solution to work around it.
+
+#### Pumba in a container
+Well you can run pubma in a container as the example says on it's [github page](https://github.com/alexei-led/pumba).
+
+
+> ```# once in a 10 seconds, try to kill (with `SIGTERM` signal) all containers named **hp(something)**```
+> ``` # on same Docker host, where Pumba container is running```
+> ```$ docker run -d -v /var/run/docker.sock:/var/run/docker.sock gaiaadm/pumba pumba --interval 10s kill --signal SIGTERM ^hp```
+
+This means that we can create, a service that runs on each node in your Swarm cluster and executes pumba netem command. We need to change the ```entrypoint``` of the service and mount ```/var/run/docker.sock``` of the local node to container so that pumba can have access to docker deamon on each node. 
+
+The pumba command should essentially look for containers that belong to your service only so you need to pass a list of containers to entrypoint pumba command.
+	export container_list=$(docker service ps --no-trunc --filter "desired-state=Running" ${SVC_NAME} | awk ' {if (NR!=1) {print $2"."$1} } ')
+
+The command should try to inject delay only in specific interface i.e. the one used by ```HEALTHCHECK```.
+
+export netem_interface=lo
+
+
+Now let's run our pumba netem service
+
+	docker service create -d --restart-condition none --mode global --name pumba-netem-delay \
+	   --mount type=bind,source=/var/run/docker.sock,destination=/var/run/docker.sock \
+	   --entrypoint "pumba --random netem --interface ${netem_interface} --duration 60s \
+	   --tc-image gaiadocker/iproute2 delay \
+	   --time 10 jitter 100 \
+	   --distribution normal ${container_list}" \
+	   gaiaadm/pumba 
+
+The effect will be same as the previous example we run on one node Swarm Cluster.  
+
+If you are scripting this, then introduce a delay and then cleanup the swarm service:
+
+	sleep 60
+	docker service rm pumba-netem-delay
 
 #### Simulate Packet loss
 To be added
