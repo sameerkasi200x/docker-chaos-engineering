@@ -1,7 +1,8 @@
+
 FROM nginx:latest
 
 RUN apt-get -qq update
-RUN apt-get -qq -y install python
+RUN apt-get -qq --allow-downgrades --allow-remove-essential --allow-change-held-packages install python > /dev/null
 COPY healthcheck.html healthcheck.py index.html /usr/share/nginx/html/
 EXPOSE 80 443
 HEALTHCHECK --interval=30s --timeout=3s --retries=2 \
